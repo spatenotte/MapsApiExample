@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <style type="text/css">
+      html, body { height: 100%; margin: 0; padding: 0; }
+      #map { height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <script src="Dijkstra.js"></script>
+    <script type="text/javascript">
+
+      var map;
+      var mapNodes = {};
+      var selectedNodes = [];
+      var higlighted = [];
+      var g = new Graph();
+
+      function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+          center: {lat: 39.50, lng: -98.35},
+          zoom: 4
+        });
+      }
+
+      function drawNodes(nodes) {
+        for(i=0; i < nodes.length; i++) {
+          mapNodes[nodes[i].id] = new google.maps.Marker({
+            position: nodes[i].latlon,
+            map: map,
+            title: nodes[i].cityname,
+            selected: false,
+            id: nodes[i].id,
+            icon: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+          });
+          (function(node) {
+            google.maps.event.addListener(node, 'click', function() {
+              if(selectedNodes.length == 0 && node.selected == false) {
+                selectNode(node);
+              }
+              else if(selectedNodes.length < 2 && node.selected == false) {
+                selectNode(node);
+                computePath(selectedNodes[0], selectedNodes[1]);
+              }
+              else if (node.selected) {
+                node.selected = false;
+                if(selectedNodes[1] == node.id) {
+                  selectedNodes.pop();
+                }
+                else {
+                  selectedNodes.shift();
+                }
+                node.setIcon('http://maps.google.com/mapfiles/ms/icons/red-dot.png');
+                for(elem in higlighted) {
+                  elem = higlighted[elem];
+                  elem.setOptions({strokeWeight: 0.5});
+                  elem.setOptions({strokeColor: '#FF0000'});
+                }
+                elem = [];
+              }
+            });
+          })(mapNodes[nodes[i].id]);
+          mapNodes[nodes[i].id].edges = [];
+          mapNodes[nodes[i].id].distances = {};
+        }
+      }
+
+      function drawEdges(edges) {
+        for(i=0; i < edges.length; i++) {
+          var origin = edges[i].origin;
+          var destination = edges[i].destination;
+          var line = new google.maps.Polyline({
+            path: [mapNodes[origin].position, mapNodes[destination].position],
+            geodesic: true,
+            map: map,
+            strokeColor: '#FF0000',
+            strokeOpacity: 1.0,
+            strokeWeight: 0.5,
+            distance: edges[i].distance,
+            id: i
+          });
+          mapNodes[destination].edges[origin] = line;
+          mapNodes[destination].distances[origin] = edges[i].distance;
+          mapNodes[origin].edges[destination] = line;
+          mapNodes[origin].distances[destination] = edges[i].distance;
+        }
+        createDijkstra();
+      }
+
+      function selectNode(node) {
+        node.selected = true;
+        selectedNodes.push(node.id);
+        node.setIcon('http://maps.google.com/mapfiles/ms/icons/green-dot.png');
+      }
+
+      function computePath(origin, destination) {
+        console.log('Origin: ' + origin + ' destination: ' + destination);
+        var ids = g.shortestPath(origin, destination);
+        //console.log('Output' + JSON.stringify(ids));
+        ids.unshift(origin);
+        console.log('Origin: ' + origin + ' destination: ' + destination + ' elements ' + ids);
+        if(ids.length == 2) {
+          mapNodes[ids[0]].edges[ids[1]].setOptions({strokeWeight: 4.0});
+          mapNodes[ids[0]].edges[ids[1]].setOptions({strokeColor: '#00CC00'});
+          higlighted.push(mapNodes[ids[0]].edges[ids[1]]);
+        }
+        else {
+          for(i = 0; i < ids.length - 1; i++) {
+            mapNodes[ids[i]].edges[ids[i+1]].setOptions({strokeWeight: 4.0});
+            mapNodes[ids[i]].edges[ids[i+1]].setOptions({strokeColor: '#00CC00'});
+            higlighted.push(mapNodes[ids[i]].edges[ids[i+1]]);
+          }
+        }
+      }
+
+      function createDijkstra() {
+        var graph = [];
+        for(node in mapNodes) {
+          graph.node = [];
+          node = mapNodes[node];
+          for(edge in node.distances) {
+            graph[node.id] = node.distances;
+          }
+        }
+        g.addGraph(graph);
+      }
+
+    </script>
+
+    <script
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCJg5d4Yw00z_x8mH61vXCFVSiaAT3p9oQ&callback=initMap&libraries=drawing,geometry">
+    </script>
+    <script src="//code.jquery.com/jquery-1.11.3.min.js"></script>
+  </body>
+</html>
+<script>
+  $( document ).ready(function() {
+    var nodes;
+    var edges;
+    $.ajax({
+      url: 'Database.php',
+      type: 'post',
+      data: {func: 'getNodes'},
+      success: function(data, status) {
+        nodes = parseNodes(data);
+      },
+      error: function(e) {
+        console.log(e);
+      }
+    });
+    $.ajax({
+      url: 'Database.php',
+      type: 'post',
+      data: {func: 'getEdges'},
+      success: function(data, status) {
+        edges = JSON.parse(data);
+      },
+      error: function(e) {
+        console.log(e);
+      }
+    });
+    $( document ).ajaxStop(function() {
+      drawNodes(nodes);
+      drawEdges(edges);
+    });
+  });
+
+  function parseNodes(data) {
+    var resultArray = JSON.parse(data);
+    nodes = [];
+    for (var i=0; i<resultArray.length; i++) {
+        nodes[i] = {id: resultArray[i].id, cityname: resultArray[i].cityname, latlon: new google.maps.LatLng(resultArray[i].lat, resultArray[i].lng)};
+    }
+    return nodes;
+  }
+</script>
